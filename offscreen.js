@@ -7,12 +7,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function processImage(srcUrl, format) {
   try {
     const response = await fetch(srcUrl);
+    if (!response.ok) {
+      throw new Error(`Fetch failed: ${response.status} ${response.statusText}`);
+    }
     const blob = await response.blob();
-    const imageBitmap = await createImageBitmap(blob);
+
+    const img = await loadImageFromBlob(blob);
 
     const canvas = document.createElement("canvas");
-    canvas.width = imageBitmap.width;
-    canvas.height = imageBitmap.height;
+    canvas.width = img.naturalWidth || img.width || 300;
+    canvas.height = img.naturalHeight || img.height || 150;
 
     const ctx = canvas.getContext("2d");
 
@@ -21,7 +25,7 @@ async function processImage(srcUrl, format) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    ctx.drawImage(imageBitmap, 0, 0);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     if (format === "pdf") {
       convertToPdf(canvas);
@@ -40,8 +44,24 @@ async function processImage(srcUrl, format) {
       filename: filename
     });
   } catch (error) {
-    console.error("Image conversion error:", error);
+    console.error("Image conversion error:", error.name, "-", error.message);
   }
+}
+
+function loadImageFromBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image from blob"));
+    };
+    img.src = url;
+  });
 }
 
 function convertToPdf(canvas) {
